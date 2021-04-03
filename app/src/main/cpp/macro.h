@@ -3,12 +3,17 @@
 //
 // TODO 专门定义宏
 
+//定义释放的宏函数
+#define DELETE(object) if(object){delete object; object = 0;}
 
 #ifndef KEVINPLAYER_MACRO_H
 #define KEVINPLAYER_MACRO_H
 
 #define THREAD_MAIN 1   // 此宏代表 主线程的意思
 #define THREAD_CHILD 2  // 此宏代表 子线程的意思
+
+#define ERROR_CODE_FFMPEG_PREPARE -1000
+#define ERROR_CODE_FFMPEG_PLAY -2000
 
 //打不开媒体数据源
 #define FFMPEG_CAN_NOT_OPEN_URL -1

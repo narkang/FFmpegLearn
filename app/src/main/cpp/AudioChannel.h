@@ -19,7 +19,7 @@ extern "C" {
 class AudioChannel : public BaseChannel
 {
 public:
-    AudioChannel(int stream_index, AVCodecContext *pContext, AVRational rational);
+    AudioChannel(int stream_index, AVCodecContext *pContext, AVRational rational, JNICallback *jniCallback);
 
     ~AudioChannel();
 

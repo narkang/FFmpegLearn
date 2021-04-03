@@ -17,6 +17,7 @@ extern "C" {
 }
 
 class RubyPlayer {
+    friend void *task_stop(void *args) ;
 public:
     RubyPlayer();
 
@@ -34,22 +35,31 @@ public:
 
     void start_();
 
+    void stop();
+
     void setRenderCallback(RenderCallback renderCallback);
+
+    int getDuration() const;
+
+    void setDuration(int duration);
 
 private:
     char *data_source = 0;
 
     pthread_t pid_prepare ;
+    pthread_t pid_start;
+    pthread_t pid_stop;
 
     AVFormatContext *formatContext = 0;
-
     AudioChannel *audioChannel = 0;
     VideoChannel *videoChannel = 0;
     JNICallback *pCallback;
-    pthread_t pid_start;
     bool isPlaying;
 
     RenderCallback  renderCallback;
+
+    int duration;  // 总时长;
+    pthread_mutex_t seekMutex;
 };
 
 

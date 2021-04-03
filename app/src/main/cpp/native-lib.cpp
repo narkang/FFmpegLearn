@@ -12,7 +12,7 @@ JavaVM *javaVm = 0;
 RubyPlayer *player = 0;
 ANativeWindow * nativeWindow = 0;
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER; // 静态初始化 互斥锁
-
+JNICallback *jniCallback = 0;
 
 int JNI_OnLoad(JavaVM *javaVm, void *pVoid){
     ::javaVm = javaVm;
@@ -66,7 +66,7 @@ JNIEXPORT void JNICALL
 Java_com_example_ffmpegdemo_RubyPlayer_prepareNative(JNIEnv *env, jobject thiz,
                                                      jstring data_source_) {
     //准备工作，首先用来解封装
-    JNICallback *jniCallback = new JNICallback(javaVm, env, thiz);
+    jniCallback = new JNICallback(javaVm, env, thiz);
     const char * data_source = env->GetStringUTFChars(data_source_, NULL);
     player = new RubyPlayer(data_source, jniCallback);
     player->setRenderCallback(renderFrame);
@@ -87,13 +87,22 @@ Java_com_example_ffmpegdemo_RubyPlayer_startNative(JNIEnv *env, jobject thiz) {
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_example_ffmpegdemo_RubyPlayer_stopNative(JNIEnv *env, jobject thiz) {
-
+    if (player) {
+        player->stop();
+    }
 }
 
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_example_ffmpegdemo_RubyPlayer_releaseNative(JNIEnv *env, jobject thiz) {
-
+    pthread_mutex_lock(&mutex);
+    if (nativeWindow) {
+        //把老的释放
+        ANativeWindow_release(nativeWindow);
+        nativeWindow = 0;
+    }
+    pthread_mutex_unlock(&mutex);
+    DELETE(player); // 移除中转站
 }
 
 extern "C"
@@ -119,3 +128,17 @@ Java_com_example_ffmpegdemo_RubyPlayer_setSurfaceNative(JNIEnv *env, jobject thi
     pthread_mutex_unlock(&mutex);
 }
 
+extern "C"
+JNIEXPORT jint JNICALL
+Java_com_example_ffmpegdemo_RubyPlayer_getDurationNative(JNIEnv *env, jobject thiz) {
+    if(player){
+        return player->getDuration();
+    }
+}
+
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_example_ffmpegdemo_RubyPlayer_seekToNative(JNIEnv *env, jobject thiz, jint play_progress) {
+
+}

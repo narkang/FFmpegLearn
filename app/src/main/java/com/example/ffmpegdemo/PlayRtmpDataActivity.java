@@ -61,6 +61,11 @@ public class PlayRtmpDataActivity extends AppCompatActivity {
                     }
                 });
             }
+
+            @Override
+            public void onProgress(int progress) {
+
+            }
         });
 
     }

@@ -10,16 +10,18 @@ extern "C" {
 
 #include "safe_queue.h"
 #include "AndroidLog.h"
+#include "JNICallback.h"
 
 class BaseChannel
 {
 public:
     int stream_index;
 
-    BaseChannel(int stream_index, AVCodecContext *pContext, AVRational time_base) {
+    BaseChannel(int stream_index, AVCodecContext *pContext, AVRational time_base, JNICallback *jniCallback) {
         this->stream_index = stream_index;
         this->pContext = pContext;
         this->time_base = time_base;
+        this->pCallback = jniCallback;
         packages.setReleaseCallback(releaseAVPacket);
         frames.setReleaseCallback(releaseAVFrame);
     }
@@ -28,6 +30,12 @@ public:
     virtual ~BaseChannel() {
         packages.clearQueue();
         frames.clearQueue();
+        if(pContext){
+            avcodec_close(pContext);
+            avcodec_free_context(&pContext);
+            pContext = 0;
+        }
+        DELETE(pCallback)
     }
 
     /**
@@ -67,6 +75,8 @@ public:
     AVRational time_base;
     double audioTime; // 每一帧，音频计算后的时间值
     double videoTime; // 每一帧，视频计算后的时间值
+
+    JNICallback *pCallback;
 };
 
 #endif //KEVINPLAYER_BASECHANNEL_H

@@ -25,8 +25,8 @@ void dropAVPacket(queue<AVPacket *> & qq) {
     }
 }
 
-VideoChannel::VideoChannel(int stream_index, AVCodecContext *pContext, AVRational rational, int fpsValue)
-    : BaseChannel(stream_index, pContext, rational) {
+VideoChannel::VideoChannel(int stream_index, AVCodecContext *pContext, AVRational rational, int fpsValue, JNICallback *jniCallback)
+    : BaseChannel(stream_index, pContext, rational, jniCallback) {
     this->fpsValue = fpsValue;
     this->frames.setSyncCallback(dropAVFrame);
     this->packages.setSyncCallback(dropAVPacket);
@@ -70,7 +70,12 @@ void VideoChannel::start() {
 }
 
 void VideoChannel::stop() {
-
+    isPlaying = 0;
+    pCallback = 0;
+    packages.setFlag(0);
+    frames.setFlag(0);
+    pthread_join(pid_video_decode, 0);
+    pthread_join(pid_video_player, 0);
 }
 
 /**

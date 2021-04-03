@@ -16,8 +16,6 @@ public class RubyPlayer implements SurfaceHolder.Callback {
         System.loadLibrary("native-lib");
     }
 
-    private OnPreparedListener onPreparedListener;
-    private SurfaceHolder surfaceHolder;
 
     public RubyPlayer() {
 
@@ -56,6 +54,14 @@ public class RubyPlayer implements SurfaceHolder.Callback {
      */
     public void release() {
         releaseNative();
+    }
+
+    /**
+     * 获取总的播放时长
+     * @return
+     */
+    public int getDuration(){
+        return getDurationNative();
     }
 
     /**
@@ -105,10 +111,19 @@ public class RubyPlayer implements SurfaceHolder.Callback {
         }
     }
 
+    // native层传递上来的 进度值
+    public void onProgress(int progress) {
+        if (null != onPreparedListener) {
+            onPreparedListener.onProgress(progress);
+        }
+    }
+
     /**
      * MainActivity设置监听，就可以回调到MainActivity的方法，进行UI的操作了
      * @param onPreparedListener
      */
+    private OnPreparedListener onPreparedListener;
+
     public void setOnPreparedListener(OnPreparedListener onPreparedListener) {
         this.onPreparedListener = onPreparedListener;
     }
@@ -116,6 +131,7 @@ public class RubyPlayer implements SurfaceHolder.Callback {
     interface OnPreparedListener {
         void onPrepared();
         void onError(String errorText);
+        void onProgress(int progress);
     }
 
     // ##############  Native 相关的
@@ -124,8 +140,11 @@ public class RubyPlayer implements SurfaceHolder.Callback {
     public native void stopNative();
     public native void releaseNative();
     public native String getFFmpegVersion();
-
+    public native int getDurationNative();
+    private native void seekToNative(int playProgress);
     // ##############  SurfaceView 相关的
+
+    private SurfaceHolder surfaceHolder;
 
     public void setSurfaceView(SurfaceView surfaceView) {
         if (null != this.surfaceHolder) {

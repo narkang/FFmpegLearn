@@ -15,6 +15,7 @@ public:
 
     void onPrepared(int thread_mode);
     void onErrorAction(int thread_mode, int error_code);
+    void onProgress(int threadMode, int errorCode);
 
 private:
     JavaVM *javaVm = 0;
@@ -23,6 +24,7 @@ private:
 
     jmethodID jmd_repared;
     jmethodID jmd_error;
+    jmethodID jmd_onProgress;
 };
 
 

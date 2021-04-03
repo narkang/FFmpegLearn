@@ -33,13 +33,15 @@ RubyPlayer::RubyPlayer(const char * data_source, JNICallback *pCallback) {
     strcpy(this->data_source, data_source);
 
     this->pCallback = pCallback;
+
+    pthread_mutex_init(&seekMutex, 0);
 }
 
 RubyPlayer::~RubyPlayer() {
-    if (this->data_source) {
-        delete this->data_source;
-        this->data_source = 0;
-    }
+    DELETE(data_source);
+    DELETE(pCallback);
+
+    pthread_mutex_destroy(&seekMutex);
 }
 
 /**
@@ -107,6 +109,8 @@ void RubyPlayer::prepare_() {
         return;
     }
 
+    duration = formatContext->duration / AV_TIME_BASE; // 最终是要拿到秒
+
     // TODO 第三步：根据流信息，流的个数，循环查找， 音频流 视频流
     // nb_streams == 流的个数
     for (int stream_index = 0; stream_index < formatContext->nb_streams; ++stream_index) {
@@ -121,7 +125,9 @@ void RubyPlayer::prepare_() {
         // 虽然在第六步，已经拿到当前流的解码器了，但可能不支持解码这种解码方式
         if (!codec) { // 如果为空，就代表：解码器不支持
             // 把错误信息，告诉给Java层去（回调给Java）
-            pCallback->onErrorAction(THREAD_CHILD, FFMPEG_FIND_DECODER_FAIL);
+            if(pCallback){
+                pCallback->onErrorAction(THREAD_CHILD, FFMPEG_FIND_DECODER_FAIL);
+            }
             return;
         }
 
@@ -129,7 +135,9 @@ void RubyPlayer::prepare_() {
         AVCodecContext *codecContext = avcodec_alloc_context3(codec);
         if (!codecContext) {
             // 把错误信息，告诉给Java层去（回调给Java）
-            pCallback->onErrorAction(THREAD_CHILD, FFMPEG_ALLOC_CODEC_CONTEXT_FAIL);
+            if(pCallback) {
+                pCallback->onErrorAction(THREAD_CHILD, FFMPEG_ALLOC_CODEC_CONTEXT_FAIL);
+            }
             return;
         }
 
@@ -137,7 +145,9 @@ void RubyPlayer::prepare_() {
         ret = avcodec_parameters_to_context(codecContext, codecParameters);
         if (ret < 0) {
             // 把错误信息，告诉给Java层去（回调给Java）
-            pCallback->onErrorAction(THREAD_CHILD, FFMPEG_CODEC_CONTEXT_PARAMETERS_FAIL);
+            if(pCallback) {
+                pCallback->onErrorAction(THREAD_CHILD, FFMPEG_CODEC_CONTEXT_PARAMETERS_FAIL);
+            }
             return;
         }
 
@@ -145,7 +155,9 @@ void RubyPlayer::prepare_() {
         ret =  avcodec_open2(codecContext, codec, 0);
         if (ret) {
             // 把错误信息，告诉给Java层去（回调给Java）
-            pCallback->onErrorAction(THREAD_CHILD, FFMPEG_OPEN_DECODER_FAIL);
+            if(pCallback) {
+                pCallback->onErrorAction(THREAD_CHILD, FFMPEG_OPEN_DECODER_FAIL);
+            }
             return;
         }
 
@@ -154,14 +166,14 @@ void RubyPlayer::prepare_() {
 
         // TODO 第十步：从编码器参数中获取流类型codec_type
         if (codecParameters->codec_type == AVMEDIA_TYPE_AUDIO) { // 音频流
-            audioChannel = new AudioChannel(stream_index, codecContext, time_base);
+            audioChannel = new AudioChannel(stream_index, codecContext, time_base, pCallback);
         } else if (codecParameters->codec_type == AVMEDIA_TYPE_VIDEO) { // 视频流
             // 获取视频相关的 fps
             // 平均帧率 == 时间基
             AVRational frame_rate = stream->avg_frame_rate;
             int fpsValue = av_q2d(frame_rate);
 
-            videoChannel = new VideoChannel(stream_index, codecContext, time_base, fpsValue);
+            videoChannel = new VideoChannel(stream_index, codecContext, time_base, fpsValue, pCallback);
             videoChannel->setRenderCallback(renderCallback);
         }
     } // end for
@@ -169,7 +181,9 @@ void RubyPlayer::prepare_() {
     // TODO 第十一步：如果流中 没有音频 也 没有视频
     if (!audioChannel && !videoChannel) {
         // 把错误信息，告诉给Java层去（回调给Java）
-        pCallback->onErrorAction(THREAD_CHILD, FFMPEG_NOMEDIA);
+        if(pCallback) {
+            pCallback->onErrorAction(THREAD_CHILD, FFMPEG_NOMEDIA);
+        }
         return;
     }
 
@@ -220,11 +234,10 @@ void RubyPlayer::start_() {
 
         // AVPacket 可能是音频 可能是视频, 没有解码的（数据包）
         AVPacket * packet = av_packet_alloc();
+        pthread_mutex_lock(&seekMutex);
         int ret = av_read_frame(formatContext, packet); // 这行代码一执行完毕，packet就有（音视频数据）
-        /*if (ret != 0) {
-            // 后续处理
-            return;
-        }*/
+        pthread_mutex_unlock(&seekMutex);
+
         if (!ret) { // ret == 0
             // 把已经得到的packet 放入队列中
             // 先判断是视频  还是  音频， 分别对应的放入 音频队列  视频队列
@@ -244,10 +257,19 @@ void RubyPlayer::start_() {
             }
         } else if (ret == AVERROR_EOF) {  // or   end of file， 文件结尾，读完了 的意思
             // 代表读完了
-            // TODO 一定是要 读完了 并且 也播完了，才做事情
-
+            //如何判断有没有播放完？判断队列是否为空
+            if (videoChannel->packages.isEmpty() && videoChannel->frames.isEmpty()
+                && audioChannel->packages.isEmpty() && audioChannel->frames.isEmpty()) {
+                //播放完了
+                av_packet_free(&packet);
+                break;
+            }
         } else {
             // 代表失败了，有问题
+            if (pCallback) {
+                pCallback->onErrorAction(THREAD_CHILD, FFMPEG_READ_PACKETS_FAIL);
+            }
+            av_packet_free(&packet);
             break;
         }
     }
@@ -262,4 +284,37 @@ void RubyPlayer::start_() {
 void RubyPlayer::setRenderCallback(RenderCallback renderCallback) {
     this->renderCallback = renderCallback;
 }
+
+int RubyPlayer:: getDuration() const{
+    return duration;
+}
+
+void RubyPlayer::setDuration(int duration){
+    this->duration = duration;
+}
+
+void *task_stop(void *args) {
+    RubyPlayer *player = static_cast<RubyPlayer *>(args);
+    //要保证_prepare方法（子线程中）执行完再释放（在主线程）
+    //pthread_join ：这里调用了后会阻塞主，可能引发ANR
+    player->isPlaying = 0; // 修改成false，音频和视频，的所有解码 和 播放 等等，全部停止了
+    pthread_join(player->pid_prepare, 0);//解决了：要保证_prepare方法（子线程中）执行完再释放（在主线程）的问题
+
+    if (player->formatContext) {
+        avformat_close_input(&player->formatContext); // 关闭媒体格式上下文
+        avformat_free_context(player->formatContext); // 回收媒体格式上下文
+        player->formatContext = 0;
+    }
+    DELETE(player->videoChannel);
+    DELETE(player->audioChannel);
+
+    DELETE(player);
+    return 0;//一定一定一定要返回0！！！
+}
+
+void RubyPlayer::stop() {
+    pCallback = 0;
+    pthread_create(&pid_stop, 0, task_stop, this);//创建stop子线程
+}
+
 

@@ -1,7 +1,7 @@
 #include "AudioChannel.h"
 
-AudioChannel::AudioChannel(int stream_index, AVCodecContext *pContext, AVRational time_base)
-        : BaseChannel(stream_index, pContext, time_base)
+AudioChannel::AudioChannel(int stream_index, AVCodecContext *pContext, AVRational time_base, JNICallback *jniCallback)
+        : BaseChannel(stream_index, pContext, time_base, jniCallback)
 {
     // 初始化 缓冲区 out_buffers
     // 如何去定义缓冲区？
@@ -63,29 +63,40 @@ void AudioChannel::start() {
 }
 
 void AudioChannel::stop() {
-    // TODO 第七大步：释放操作
-    // 7.1 设置停止状态
-    /*if (bqPlayerPlay) {
-        (*bqPlayerPlay)->SetPlayState(bqPlayerPlay, SL_PLAYSTATE_STOPPED);
-        bqPlayerPlay = 0;
+    isPlaying = 0;
+    pCallback = 0;
+    packages.setFlag(0);
+    frames.setFlag(0);
+    pthread_join(pid_audio_decode, 0);
+    pthread_join(pid_audio_player, 0);
+    if (swr_ctx) {
+        swr_free(&swr_ctx);
+        swr_ctx = 0;
     }
-    // 7.2 销毁播放器
+    /**
+    * 7、释放
+    */
+    //7.1 设置播放器状态为停止状态
+    if (bqPlayerPlay) {
+        (*bqPlayerPlay)->SetPlayState(bqPlayerPlay, SL_PLAYSTATE_STOPPED);
+    }
+    //7.2 销毁播放器
     if (bqPlayerObject) {
         (*bqPlayerObject)->Destroy(bqPlayerObject);
         bqPlayerObject = 0;
         bqPlayerBufferQueue = 0;
     }
-    // 7.3 销毁混音器
+    //7.3 销毁混音器
     if (outputMixObject) {
         (*outputMixObject)->Destroy(outputMixObject);
         outputMixObject = 0;
     }
-    // 7.4 销毁引擎
+    //7.4 销毁引擎
     if (engineObject) {
         (*engineObject)->Destroy(engineObject);
         engineObject = 0;
         engineInterface = 0;
-    }*/
+    }
 }
 
 /**
@@ -191,7 +202,9 @@ int AudioChannel::getPCM() {
 
         // 拿到音频 包 帧 时间戳 (时间都是有单位的，而在FFmpeg是成为时间基 TimeBase)
         audioTime = frame->best_effort_timestamp * av_q2d(this->time_base);
-
+        if (pCallback) {
+            pCallback->onProgress(THREAD_CHILD, audioTime);
+        }
         break;
     } // end while
     releaseAVFrame(&frame); // 渲染完了，frame没用了，释放掉
