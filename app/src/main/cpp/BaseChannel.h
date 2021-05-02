@@ -35,7 +35,6 @@ public:
             avcodec_free_context(&pContext);
             pContext = 0;
         }
-        DELETE(pCallback)
     }
 
     /**

@@ -53,6 +53,7 @@ public class RubyPlayer implements SurfaceHolder.Callback {
      * 资源释放
      */
     public void release() {
+        surfaceHolder.removeCallback(this);
         releaseNative();
     }
 
